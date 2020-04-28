@@ -2,6 +2,7 @@ import sys
 import os
 import datetime
 import json
+import uuid
 
 __all__ = ['LogSpan', 'debug', 'info', 'warn', 'error']
 
@@ -23,7 +24,7 @@ class LogSpan:
     """
     
     def __init__(self, requestId=None):
-        self.requestId = requestId or 'foo'
+        self.requestId = requestId or str(uuid.uuid4())
         self.annotation = dict()
 
     def _output(self, loglevel='info', **kwargs):
