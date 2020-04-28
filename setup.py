@@ -6,10 +6,10 @@ from setuptools import setup
 setup(
     name='notcologger',
     version='0.1',
-    description=
-'''Not CO Logger, a cloud logging library. This library is aimed at
-helping produce consistent searchable log entries to stdout in a
-cloud/container environment.''',
+    description='Not CO Logger, a cloud logging library.',
+    long_description=
+'''This library is aimed at helping produce consistent searchable log 
+entries to stdout in a cloud/container environment.''',
     keywords='logging',
     url='https://github.com/jmtapio/not-co-logger',
     author='Juha-Matti Tapio',
