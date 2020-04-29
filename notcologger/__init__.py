@@ -43,8 +43,17 @@ class LogSpan:
         logentry.update(kwargs)
 
         if not logentry['meta']: del logentry['meta']
-        
-        sys.stdout.write('{}\n'.format(json.dumps(logentry)))
+
+        for key in logentry:
+            if isinstance(logentry[key], bytes):
+                logentry[key] = logentry[key].decode('utf-8', errors='ignore')
+
+        if isinstance(logentry.get('meta'), dict):
+            for key in logentry['meta']:
+                if isinstance(logentry['meta'][key], bytes):
+                    logentry['meta'][key] = logentry['meta'][key].decode('utf-8', errors='ignore')
+
+        sys.stdout.write('{}\n'.format(json.dumps(logentry, skipkeys=True)))
 
         if loglevel != 'debug':
             sys.stdout.flush()

@@ -46,3 +46,7 @@ class TestLogSpan(unittest.TestCase):
     def test_logger_error(self):
         logger = LogSpan()
         logger.error('test', 'message', 'technical', 'user', {'foo': 'bar'})
+
+    def test_bytes(self):
+        logger = LogSpan()
+        logger.error('bytestest', 'message', 'technical', 'user', dict(foo=b'bar'))
