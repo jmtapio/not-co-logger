@@ -5,7 +5,7 @@ from setuptools import setup
 
 setup(
     name='notcologger',
-    version='0.1',
+    version='0.1.1',
     description='Not CO Logger, a cloud logging library.',
     long_description=
 '''This library is aimed at helping produce consistent searchable log 
@@ -17,7 +17,7 @@ entries to stdout in a cloud/container environment.''',
     license='MIT',
     packages=['notcologger'],
     classifiers = [
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Programming Language :: Python :: 3',
