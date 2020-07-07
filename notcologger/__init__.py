@@ -49,9 +49,12 @@ class LogSpan:
                 logentry[key] = logentry[key].decode('utf-8', errors='ignore')
 
         if isinstance(logentry.get('meta'), dict):
-            for key in logentry['meta']:
-                if isinstance(logentry['meta'][key], bytes):
-                    logentry['meta'][key] = logentry['meta'][key].decode('utf-8', errors='ignore')
+            meta = logentry['meta']
+            for key in meta:
+                if isinstance(meta[key], bytes):
+                    meta[key] = meta[key].decode('utf-8', errors='ignore')
+                elif isinstance(meta[key], BaseException):
+                    meta[key] = repr(meta[key])
 
         sys.stdout.write('{}\n'.format(json.dumps(logentry, skipkeys=True)))
 

@@ -5,7 +5,7 @@ from setuptools import setup
 
 setup(
     name='notcologger',
-    version='0.1.1',
+    version='0.1.2',
     description='Not CO Logger, a cloud logging library.',
     long_description=
 '''This library is aimed at helping produce consistent searchable log 

@@ -50,3 +50,8 @@ class TestLogSpan(unittest.TestCase):
     def test_bytes(self):
         logger = LogSpan()
         logger.error('bytestest', 'message', 'technical', 'user', dict(foo=b'bar'))
+
+    def test_exception(self):
+        logger = LogSpan()
+        e = ValueError('some invalid value')
+        logger.error('exceptiontest', 'message', 'session', 'user', dict(exc=e))
