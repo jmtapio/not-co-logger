@@ -24,7 +24,7 @@ entries to stdout in a cloud/container environment.''',
         'Topic :: Software Development :: Libraries',
         'Topic :: System :: Logging',
     ],
-    python_requires='>=3',
+    python_requires='>=3.3',
     test_suite='tests.test_logger',
     include_package_data=True,
     zip_safe=True)
