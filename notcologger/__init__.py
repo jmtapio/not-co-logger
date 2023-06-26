@@ -4,7 +4,7 @@ import datetime
 import json
 import uuid
 
-__all__ = ['LogSpan', 'debug', 'info', 'warn', 'error']
+__all__ = ['LogSpan', 'ExceptionSpan', 'debug', 'info', 'warn', 'error']
 
 
 _loglevel_map = {
