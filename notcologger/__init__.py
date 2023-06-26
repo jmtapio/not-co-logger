@@ -26,6 +26,10 @@ class LogSpan:
     def __init__(self, requestId=None):
         self.requestId = requestId or str(uuid.uuid4())
         self.annotation = dict()
+        self._stdout = sys.stdout
+
+    def _make_timestamp(self):
+        return datetime.datetime.now().isoformat()
 
     def _output(self, loglevel='info', **kwargs):
         # Check if self loglevel should get logged, default to debug if unknown level
@@ -38,8 +42,8 @@ class LogSpan:
         meta = dict()
         meta.update(self.annotation)
         meta.update(kwargs.get('meta', None) or dict())
-        
-        logentry = dict(timestamp=datetime.datetime.now().isoformat(), level=loglevel, rid=self.requestId)
+
+        logentry = dict(timestamp=self._make_timestamp(), level=loglevel, rid=self.requestId)
         logentry.update(kwargs)
 
         if not logentry['meta']: del logentry['meta']
@@ -56,10 +60,10 @@ class LogSpan:
                 elif isinstance(meta[key], BaseException):
                     meta[key] = repr(meta[key])
 
-        sys.stdout.write('{}\n'.format(json.dumps(logentry, skipkeys=True)))
+        self._stdout.write('{}\n'.format(json.dumps(logentry, skipkeys=True)))
 
         if loglevel != 'debug':
-            sys.stdout.flush()
+            self._stdout.flush()
 
     def annotate(self, **kwargs):
         """Add key-value-pairs to add to new logged entrie's metadata
@@ -140,6 +144,45 @@ class LogSpan:
             group=group,
             user=user,
             meta=meta)
+
+
+class ExceptionSpan(LogSpan):
+    """Logger that is activated when an exception is raised in a with-block
+
+    Usage example:
+
+    with ExceptionSpan('mylog.problem', 'Doing something fails') as log:
+        do_something_that_fails()
+
+    """
+
+    def __init__(self, logtype, message, group, requestId=None, level='error', user=None, meta=None):
+        super().__init__(requestId)
+        self.default_level = level
+        self.default_logtype = logtype
+        self.default_message = message
+        self.default_group = group
+        self.default_user = user
+        self.annotation = meta or dict()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self._output(
+                loglevel = self.default_level,
+                type     = self.default_logtype,
+                message  = self.default_message,
+                group    = self.default_group,
+                user     = self.default_user,
+                meta     = dict(
+                    exc_type = exc_type.__qualname__,
+                    exc_val = str(getattr(exc_val, 'args', ''))
+                    ))
+
+        # We will not catch the exception
+        return None
 
 
 def debug(logtype, message, group=None, user=None, meta=None):
