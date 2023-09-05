@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "notcologger"
-version = "0.2.0"
+version = "0.2.1"
 description = "Not CO Logger, a cloud logging library."
 authors = ["Juha-Matti Tapio <jmtapio@verkkotelakka.net>"]
 license = "MIT"
