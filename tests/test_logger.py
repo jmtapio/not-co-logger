@@ -97,6 +97,14 @@ class TestLogSpan(unittest.TestCase):
             logger._stdout.output,
             '{"timestamp": "faketimestamp", "level": "error", "rid": "fake-id", "type": "exceptiontest", "message": "message", "group": "session", "user": "user", "meta": {"exc": "ValueError(\'some invalid value\')"}}\n')
 
+    def test_utf8(self):
+        logger = PatchedLogSpan('fake-id')
+        logger._stdout = MockOutput()
+        logger.info('test', 'test', 'technical', 'user', {'föö': 'böö'})
+        self.assertEqual(
+                logger._stdout.output,
+                '{"timestamp": "faketimestamp", "level": "info", "rid": "fake-id", "type": "test", "message": "test", "group": "technical", "user": "user", "meta": {"föö": "böö"}}\n')
+
 
 class FakeError(Exception):
     pass

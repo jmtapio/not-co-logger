@@ -60,7 +60,7 @@ class LogSpan:
                 elif isinstance(meta[key], BaseException):
                     meta[key] = repr(meta[key])
 
-        self._stdout.write('{}\n'.format(json.dumps(logentry, skipkeys=True)))
+        self._stdout.write('{}\n'.format(json.dumps(logentry, ensure_ascii=False, skipkeys=True)))
 
         if loglevel != 'debug':
             self._stdout.flush()
