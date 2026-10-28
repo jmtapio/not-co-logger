@@ -33,7 +33,7 @@ class LogSpan:
 
     def _output(self, loglevel='info', **kwargs):
         # Check if self loglevel should get logged, default to debug if unknown level
-        if loglevel not in _loglevel_map.get(os.environ.get('NOTCO_LOGLEVEL', 'debug'), 'debug'):
+        if loglevel not in _loglevel_map.get(os.environ.get('NOTCO_LOGLEVEL', 'debug'), _loglevel_map['debug']):
             return
 
         if 'user' in kwargs and kwargs['user'] is None:
@@ -46,7 +46,10 @@ class LogSpan:
         logentry = dict(timestamp=self._make_timestamp(), level=loglevel, rid=self.requestId)
         logentry.update(kwargs)
 
-        if not logentry['meta']: del logentry['meta']
+        if meta:
+            logentry['meta'] = meta
+        else:
+            logentry.pop('meta', None)
 
         for key in logentry:
             if isinstance(logentry[key], bytes):
@@ -151,7 +154,7 @@ class ExceptionSpan(LogSpan):
 
     Usage example:
 
-    with ExceptionSpan('mylog.problem', 'Doing something fails') as log:
+    with ExceptionSpan('mylog.problem', 'Doing something fails', 'technical') as log:
         do_something_that_fails()
 
     """
@@ -163,23 +166,27 @@ class ExceptionSpan(LogSpan):
         self.default_message = message
         self.default_group = group
         self.default_user = user
-        self.annotation = meta or dict()
+        self.annotation = dict(meta or {})
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         if exc_type:
-            self._output(
-                loglevel = self.default_level,
-                type     = self.default_logtype,
-                message  = self.default_message,
-                group    = self.default_group,
-                user     = self.default_user,
-                meta     = dict(
-                    exc_type = exc_type.__qualname__,
-                    exc_val = str(getattr(exc_val, 'args', ''))
-                    ))
+            try:
+                self._output(
+                    loglevel = self.default_level,
+                    type     = self.default_logtype,
+                    message  = self.default_message,
+                    group    = self.default_group,
+                    user     = self.default_user,
+                    meta     = dict(
+                        exc_type = exc_type.__qualname__,
+                        exc_val = str(getattr(exc_val, 'args', ''))
+                        ))
+            except Exception:
+                # Logging failures must not replace the exception from the block.
+                pass
 
         # We will not catch the exception
         return None

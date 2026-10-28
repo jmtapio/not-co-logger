@@ -39,7 +39,7 @@ Here are some groups that have been found to be useful:
 When you need to log an error but only when an exception is raised, you can use ExceptionSpan context manager:
 
 ```
-    with ExceptionSpan('mylog.problem', 'Doing something fails') as log:
+    with ExceptionSpan('mylog.problem', 'Doing something fails', 'technical') as log:
         do_something_that_fails()
         log.info('mylog.success', 'It worked!', 'technical')
 ```
@@ -47,3 +47,23 @@ When you need to log an error but only when an exception is raised, you can use 
 If `do_something_that_fails()` fails and raises an exception, the ExceptionSpan logs an error. If the call succeeds, the optional log.info() is called. Note that ExceptionSpan does not catch the exception.
 
 
+
+## Metadata and logging failures
+
+`LogSpan.annotate(**values)` adds metadata to subsequent events. Event-specific
+`meta` values override annotations with the same key. Logging does not modify the
+supplied metadata dictionary. Bytes and exceptions directly in `meta` are converted
+to strings; nested values must already be JSON serializable. Empty metadata is omitted.
+
+`NOTCO_LOGLEVEL` accepts `debug`, `info`, `warning`, or `error`, and defaults to
+`debug` for missing or unrecognized values.
+
+Ordinary logging calls propagate serialization and output errors. When an exception
+is already leaving an `ExceptionSpan` block, logging errors derived from `Exception`
+are suppressed so the original exception continues to propagate.
+
+## Running tests
+
+```sh
+python3 -m unittest discover -s tests -v
+```

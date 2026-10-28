@@ -1,4 +1,8 @@
+import io
+import json
+import os
 import unittest
+from unittest.mock import patch
 
 from notcologger import LogSpan, ExceptionSpan, debug, info, warn, error
 
@@ -33,8 +37,50 @@ class TestLogSpan(unittest.TestCase):
 
         logger.info('foo', 'bar', 'session')
 
-        self.assertIn('"type": "foo", "message": "bar", "group": "session", "user": "SYSTEM"}',
-                      logger._stdout.output)
+        entry = json.loads(logger._stdout.output)
+        self.assertEqual(entry['meta'], {'foo': 'bar', 'baz': 123})
+        self.assertEqual(entry['user'], 'SYSTEM')
+
+    def test_metadata_precedence_and_no_mutation(self):
+        logger = LogSpan()
+        logger._stdout = io.StringIO()
+        logger.annotate(shared='annotation', persistent=True)
+        exc = ValueError('bad')
+        metadata = {'shared': 'event', 'bytes': b'hello', 'exc': exc}
+        logger.info('test', 'message', 'technical', meta=metadata)
+        entry = json.loads(logger._stdout.getvalue())
+        self.assertEqual(entry['meta'], {
+            'shared': 'event', 'persistent': True,
+            'bytes': 'hello', 'exc': repr(exc)})
+        self.assertEqual(metadata['bytes'], b'hello')
+        self.assertIs(metadata['exc'], exc)
+        self.assertEqual(logger.annotation, {'shared': 'annotation', 'persistent': True})
+
+    def test_level_filtering(self):
+        levels = ('debug', 'info', 'warning', 'error')
+        for configured in (None, 'invalid') + levels:
+            with self.subTest(configured=configured), patch.dict(os.environ):
+                if configured is None:
+                    os.environ.pop('NOTCO_LOGLEVEL', None)
+                else:
+                    os.environ['NOTCO_LOGLEVEL'] = configured
+                logger = LogSpan()
+                logger._stdout = io.StringIO()
+                for method in (logger.debug, logger.info, logger.warn, logger.error):
+                    method('test', 'message', 'technical')
+                emitted = [json.loads(line)['level']
+                           for line in logger._stdout.getvalue().splitlines()]
+                expected = levels[levels.index(configured):] if configured in levels else levels
+                self.assertEqual(emitted, list(expected))
+
+    def test_ordinary_logging_errors_propagate(self):
+        logger = LogSpan()
+        logger._stdout = io.StringIO()
+        with self.assertRaises(TypeError):
+            logger.info('test', 'message', 'technical', meta={'bad': object()})
+        with patch.object(logger._stdout, 'write', side_effect=OSError('write failed')):
+            with self.assertRaises(OSError):
+                logger.info('test', 'message', 'technical')
 
     def test_plain_debug(self):
         debug('test', 'message', 'technical')
@@ -121,6 +167,35 @@ class TestExceptionSpan(unittest.TestCase):
             pass
         self.assertEqual(log._stdout.output,
                          '{"timestamp": "faketimestamp", "level": "error", "rid": "fake-id", "type": "foo", "message": "bar", "group": "technical", "user": "SYSTEM", "meta": {"exc_type": "FakeError", "exc_val": "(\'valueerror\',)"}}\n')
+
+    def test_metadata_is_preserved_and_copied(self):
+        metadata = {'session': 'abc', 'exc_type': 'overridden'}
+        span = ExceptionSpan('test', 'message', 'technical', meta=metadata)
+        span.annotate(extra=True)
+        self.assertNotIn('extra', metadata)
+        span._stdout = io.StringIO()
+        original = FakeError('original')
+        with self.assertRaises(FakeError) as caught:
+            with span:
+                raise original
+        self.assertIs(caught.exception, original)
+        self.assertEqual(json.loads(span._stdout.getvalue())['meta'], {
+            'session': 'abc', 'extra': True,
+            'exc_type': 'FakeError', 'exc_val': "('original',)"})
+
+    def test_logging_failures_preserve_original_exception(self):
+        for failure in ('serialization', 'write', 'flush'):
+            with self.subTest(failure=failure):
+                span = ExceptionSpan('test', 'message', 'technical',
+                                     meta={'bad': object()} if failure == 'serialization' else None)
+                span._stdout = io.StringIO()
+                original = FakeError('original')
+                if failure != 'serialization':
+                    setattr(span._stdout, failure, unittest.mock.Mock(side_effect=OSError(failure)))
+                with self.assertRaises(FakeError) as caught:
+                    with span:
+                        raise original
+                self.assertIs(caught.exception, original)
 
     def test_nofail(self):
         try:
