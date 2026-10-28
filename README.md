@@ -116,6 +116,13 @@ to strings; nested values must already be JSON serializable. Empty metadata is o
 `NOTCO_LOGLEVEL` accepts `debug`, `info`, `warning`, or `error`, and defaults to
 `debug` for missing or unrecognized values.
 
+Non-finite floats (`NaN`, positive infinity, and negative infinity) are rejected
+with `ValueError`, including in nested metadata. Context metadata and annotations
+are validated before changing existing state; event serialization fails before
+writing any output. This is a compatibility change from 0.2.1, which emitted
+non-standard JSON tokens for these values. Convert them explicitly before logging
+if they are meaningful to your application.
+
 Ordinary logging calls propagate serialization and output errors. When an exception
 is already leaving an `ExceptionSpan` block, logging errors derived from `Exception`
 are suppressed so the original exception continues to propagate.

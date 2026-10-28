@@ -76,6 +76,20 @@ class TestLogContext(unittest.TestCase):
             info('event', 'message', 'technical')
         self.assertEqual(entries(self.output)[0]['rid'], 'parent')
 
+    def test_nonfinite_metadata_leaves_active_context_unchanged(self):
+        with log_context('parent', meta={'existing': 'original'}):
+            for value in (float('nan'), float('inf'), float('-inf')):
+                for invalid in (value, {'nested': [value]}):
+                    with self.subTest(value=value, invalid=invalid):
+                        with self.assertRaises(ValueError):
+                            with log_context('invalid', meta={'bad': invalid}):
+                                self.fail('invalid context was entered')
+                        info('event', 'message', 'technical')
+        for row in entries(self.output):
+            self.assertEqual(row['rid'], 'parent')
+            self.assertEqual(row['meta'], {'existing': 'original'})
+        self.assertEqual(len(entries(self.output)), 6)
+
     def test_explicit_spans_stay_independent(self):
         with log_context('ambient', meta={'ambient': True}):
             LogSpan('explicit').info('explicit', 'message', 'technical')

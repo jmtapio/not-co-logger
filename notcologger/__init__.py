@@ -40,7 +40,7 @@ def log_context(requestId=None, meta=None):
             raise TypeError('meta must be a dictionary or None')
         metadata.update(meta)
     # Validate and snapshot before changing the active context.
-    state = (requestId, json.dumps(metadata, ensure_ascii=False))
+    state = (requestId, json.dumps(metadata, ensure_ascii=False, allow_nan=False))
     token = _log_context.set(state)
     try:
         yield
@@ -104,7 +104,7 @@ class LogSpan:
                 elif isinstance(meta[key], BaseException):
                     meta[key] = repr(meta[key])
 
-        self._stdout.write('{}\n'.format(json.dumps(logentry, ensure_ascii=False, skipkeys=True)))
+        self._stdout.write('{}\n'.format(json.dumps(logentry, ensure_ascii=False, skipkeys=True, allow_nan=False)))
 
         if loglevel != 'debug':
             self._stdout.flush()
@@ -117,7 +117,7 @@ class LogSpan:
         """
 
         # Test if the annotated values are JSON serializable, throw an exception if not
-        json.dumps(kwargs)
+        json.dumps(kwargs, allow_nan=False)
 
         self.annotation.update(kwargs)
 

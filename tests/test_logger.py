@@ -82,6 +82,30 @@ class TestLogSpan(unittest.TestCase):
             with self.assertRaises(OSError):
                 logger.info('test', 'message', 'technical')
 
+    def test_nonfinite_values_are_rejected_without_writing(self):
+        logger = LogSpan()
+        logger._stdout = io.StringIO()
+        for value in (float('nan'), float('inf'), float('-inf')):
+            for metadata in ({'value': value}, {'nested': [{'value': value}]}):
+                with self.subTest(value=value, metadata=metadata):
+                    with self.assertRaises(ValueError):
+                        logger.info('test', 'message', 'technical', meta=metadata)
+                    self.assertEqual(logger._stdout.getvalue(), '')
+            with self.subTest(value=value, field='message'):
+                with self.assertRaises(ValueError):
+                    logger.info('test', value, 'technical')
+                self.assertEqual(logger._stdout.getvalue(), '')
+
+    def test_nonfinite_annotations_leave_existing_values_unchanged(self):
+        logger = LogSpan()
+        logger.annotate(existing='original')
+        for value in (float('nan'), float('inf'), float('-inf')):
+            for invalid in (value, {'nested': [value]}):
+                with self.subTest(value=value, invalid=invalid):
+                    with self.assertRaises(ValueError):
+                        logger.annotate(existing='replacement', bad=invalid)
+                    self.assertEqual(logger.annotation, {'existing': 'original'})
+
     def test_plain_debug(self):
         debug('test', 'message', 'technical')
 
@@ -196,6 +220,19 @@ class TestExceptionSpan(unittest.TestCase):
                     with span:
                         raise original
                 self.assertIs(caught.exception, original)
+
+    def test_nonfinite_metadata_preserves_original_exception(self):
+        for value in (float('nan'), float('inf'), float('-inf')):
+            with self.subTest(value=value):
+                span = ExceptionSpan('test', 'message', 'technical',
+                                     meta={'nested': [value]})
+                span._stdout = io.StringIO()
+                original = FakeError('original')
+                with self.assertRaises(FakeError) as caught:
+                    with span:
+                        raise original
+                self.assertIs(caught.exception, original)
+                self.assertEqual(span._stdout.getvalue(), '')
 
     def test_nofail(self):
         try:
