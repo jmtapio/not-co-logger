@@ -1,6 +1,6 @@
 [project]
 name = "notcologger"
-version = "0.2.1"
+version = "0.3.0"
 description = "Not CO Logger, a cloud logging library."
 authors = [{name = "Juha-Matti Tapio", email = "jmtapio@verkkotelakka.net"}]
 license = "MIT"
