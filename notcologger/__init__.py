@@ -3,8 +3,10 @@ import os
 import datetime
 import json
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
 
-__all__ = ['LogSpan', 'ExceptionSpan', 'debug', 'info', 'warn', 'error']
+__all__ = ['LogSpan', 'ExceptionSpan', 'debug', 'info', 'warn', 'error', 'log_context']
 
 
 _loglevel_map = {
@@ -13,6 +15,45 @@ _loglevel_map = {
     'warning': ('warning', 'error'),
     'error': ('error',)
     }
+
+
+# Store immutable JSON text so inherited contexts never share mutable metadata.
+_log_context = ContextVar('notcologger_context', default=None)
+
+
+@contextmanager
+def log_context(requestId=None, meta=None):
+    """Bind module-level logs to a request ID and a JSON snapshot of metadata.
+
+    Nested scopes inherit the request ID unless one is supplied. Metadata is
+    merged with the parent, with inner values taking precedence. Explicit
+    LogSpan and ExceptionSpan instances remain independent of this context.
+    """
+    parent = _log_context.get()
+    if requestId is None:
+        requestId = parent[0] if parent else str(uuid.uuid4())
+    if not isinstance(requestId, str) or not requestId:
+        raise ValueError('requestId must be a non-empty string or None')
+    metadata = json.loads(parent[1]) if parent else {}
+    if meta is not None:
+        if not isinstance(meta, dict):
+            raise TypeError('meta must be a dictionary or None')
+        metadata.update(meta)
+    # Validate and snapshot before changing the active context.
+    state = (requestId, json.dumps(metadata, ensure_ascii=False))
+    token = _log_context.set(state)
+    try:
+        yield
+    finally:
+        _log_context.reset(token)
+
+
+def _module_span():
+    state = _log_context.get()
+    span = LogSpan(state[0] if state else None)
+    if state:
+        span.annotation = json.loads(state[1])
+    return span
 
 
 class LogSpan:
@@ -201,7 +242,7 @@ def debug(logtype, message, group=None, user=None, meta=None):
     user: some kind of user identifier
     meta: dictionary of free form data
     """
-    span = LogSpan()
+    span = _module_span()
     span.debug(logtype, message, group, user, meta)
 
 def info(logtype, message, group, user=None, meta=None):
@@ -213,7 +254,7 @@ def info(logtype, message, group, user=None, meta=None):
     user: some kind of user identifier
     meta: dictionary of free form data
     """
-    span = LogSpan()
+    span = _module_span()
     span.info(logtype, message, group, user, meta)
 
 def warn(logtype, message, group, user=None, meta=None):
@@ -225,7 +266,7 @@ def warn(logtype, message, group, user=None, meta=None):
     user: some kind of user identifier
     meta: dictionary of free form data
     """
-    span = LogSpan()
+    span = _module_span()
     span.warn(logtype, message, group, user, meta)
 
 def error(logtype, message, group, user=None, meta=None):
@@ -237,5 +278,5 @@ def error(logtype, message, group, user=None, meta=None):
     user: some kind of user identifier
     meta: dictionary of free form data
     """
-    span = LogSpan()
+    span = _module_span()
     span.error(logtype, message, group, user, meta)

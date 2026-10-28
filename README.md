@@ -28,6 +28,52 @@ A good logtype is unique or at least easily greppable. We suggest naming them hi
 
 All log rows are bound together by the requestId when logging them. Timestamps are automatically added.
 
+## Request context
+
+Use `log_context()` to correlate module-level logging calls without passing a
+`LogSpan` through every helper:
+
+```python
+from notcologger import info, log_context
+
+async def handle_request(request_id):
+    with log_context(requestId=request_id, meta={"service": "billing"}):
+        info("request.start", "Handling request", "request")
+        await process_payment()
+```
+
+All module-level `debug`, `info`, `warn`, and `error` calls in the scope use its
+request ID and metadata. Use ordinary `with`, including inside async functions.
+The context manager does not return a logger.
+
+- An outer scope without `requestId` generates one ID for the entire scope.
+- A nested scope inherits its parent's ID unless given a new one. Explicit IDs
+  must be non-empty strings.
+- Metadata merges shallowly: inner context values override parent values, and
+  event-specific `meta` overrides context values. Nested objects are replaced,
+  rather than recursively merged.
+- Context metadata must be a JSON-serializable dictionary. It is validated and
+  snapshotted when entering the scope, including nested lists and dictionaries.
+  Standard JSON conversion applies (for example, tuples become arrays and numeric
+  dictionary keys become strings). Bytes and exceptions are supported in event
+  metadata as described below, but must be converted before binding context metadata.
+- Exiting restores the previous context, including on exceptions and cancellation.
+  Invalid context metadata fails before changing the active context.
+
+Outside a context, module-level logging retains its original behavior: every call
+gets a fresh request ID. Explicit `LogSpan` and `ExceptionSpan` objects remain
+independent of ambient context. To correlate an explicit span, pass the request ID
+and metadata to it directly. Entering an `ExceptionSpan` does not bind module-level
+logging calls.
+
+Asyncio tasks inherit the context active when they are created. Changes in a child
+scope do not affect the parent or sibling tasks. A background task can retain its
+inherited request context after the parent's scope exits; give unrelated background
+work a new context explicitly. `asyncio.to_thread()` propagates context. For
+`run_in_executor()` or thread pools, propagate deliberately with a fresh
+`contextvars.copy_context().run` per submission; do not rely on implicit thread
+inheritance. Context is not automatically propagated across processes or services.
+
 ## Levels
 
 These are suggested guidelines for log levels:
