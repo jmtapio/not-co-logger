@@ -1,37 +1,101 @@
 # Not-co-logger
 
-Not-co-logger is a simple Python library to help log things to stdout in a 
-specific JSON format. It is inspired by the checkout-logger TypeScript 
-library (https://github.com/CheckoutFinland/checkout-logger).
+Not-co-logger writes application logs to stdout as one JSON object per line,
+in a fixed format. It is meant for services running in cloud environments, where
+a log collector reads stdout and logs from many services end up in one place.
+Consistent fields make these logs easy to search, filter and correlate.
 
-## Python support
+The library is deliberately small and opinionated:
 
-Supported Python versions are **3.11, 3.12, 3.13, 3.14, and 3.15**.
-CI runs the test suite on each of these versions. We target Python releases
-receiving upstream bug fixes or security updates; see the
-[Python version status](https://devguide.python.org/versions/).
-New Python releases are added to this list after CI validation.
+- **One JSON line per event**, written to stdout. No handlers, formatters or
+  log files to configure.
+- **A fixed set of fields.** Every event has a type, a human-readable message
+  and a group. Anything else goes in a free-form `meta` object.
+- **A request ID on every line**, so all events from one request or job can be
+  found together.
+- **One setting**: the minimum log level, read from an environment variable.
 
-The next release requires Python 3.11 or newer, dropping support for Python 3.9
-and 3.10. Applications using those versions must upgrade Python before upgrading
-from notcologger 0.2.1.
+## Install
 
-## How to use
+```sh
+pip install notcologger
+```
 
-This guide is short and in need of much verbosity.
+Requires Python 3.11 or newer.
 
-The idea behind this library is that typically in a complex cloud environment it makes ones life much easier if apps log to stdout in a consistent JSON format. This library implements in a pretty simple form some practices that have been found useful.
+## Quick start
 
-LogSpan(requestId) creates a logspan object, which has error, warn, info and debug methods to log varying levels of messages. All messages have a type (for example "lambda.handler.start"), message, log group (for example technical or session), and optionally user (could be IP or user id) and meta (free form object).
+```python
+from notcologger import info
 
-A good logtype is unique or at least easily greppable. We suggest naming them hierarchically, for example 'component.module.subtask' or something like that. A logtype should be informative but not overly rigid or verbose. Message is the typical human readable part of an event. Meta should be understood as a grab bag object for any additional fields that would be considered useful for the particular log event. For example a HTTP request log event could have the requested path included in the meta object.
+info("orders.checkout.start", "Checkout started", "request",
+     user="u-42", meta={"path": "/checkout"})
+```
 
-All log rows are bound together by the requestId when logging them. Timestamps are automatically added.
+```json
+{"timestamp": "2026-10-28T09:59:36.891114", "level": "info", "rid": "e5c4be97-7ae7-4da4-a114-d0128d0c5616", "type": "orders.checkout.start", "message": "Checkout started", "group": "request", "user": "u-42", "meta": {"path": "/checkout"}}
+```
 
-## Request context
+The module-level functions are `debug`, `info`, `warn` and `error`. They all take
+`(logtype, message, group, user=None, meta=None)`. Outside a
+[request context](#request-context), each call gets a new request ID.
 
-Use `log_context()` to correlate module-level logging calls without passing a
-`LogSpan` through every helper:
+## Log format
+
+| Field       | Description |
+|-------------|-------------|
+| `timestamp` | Local time in ISO 8601 format, added automatically. |
+| `level`     | `debug`, `info`, `warning` or `error`. |
+| `rid`       | Request ID that ties related events together. Generated (UUID4) if not given. |
+| `type`      | What happened, as a stable identifier, e.g. `orders.checkout.start`. |
+| `message`   | Human-readable description. |
+| `group`     | Broad category of the event, see [Groups](#groups). |
+| `user`      | User identifier, such as a user ID or IP address. Defaults to `SYSTEM`. |
+| `meta`      | Free-form object with any extra data. Omitted when empty. |
+
+## Conventions
+
+### Log types
+
+A log type should be unique, or at least easy to grep for. Name types
+hierarchically, such as `component.module.subtask`, and make them informative
+but short.
+
+### Levels
+
+- **error**: something failed and needs attention from administrators.
+- **warning**: something went wrong, but nobody needs to be alerted urgently.
+- **info**: normal operation.
+- **debug**: detailed developer output that helps answer "what just happened?".
+
+### Groups
+
+- **request**: incoming requests
+- **response**: outgoing responses
+- **session**: events related to an active session
+- **technical**: technical state or problems
+
+## Usage
+
+### LogSpan
+
+A `LogSpan` logs events under one request ID. It has the same `debug`, `info`,
+`warn` and `error` methods as the module. `annotate()` adds metadata to every
+event the span logs after it; `meta` given to an individual event takes
+precedence.
+
+```python
+from notcologger import LogSpan
+
+log = LogSpan(request_id)
+log.annotate(session="s-1234")
+log.info("auth.login.success", "User logged in", "session", user="u-42")
+```
+
+### Request context
+
+`log_context()` binds module-level logging calls to a request ID and metadata,
+so you don't have to pass a `LogSpan` through every function:
 
 ```python
 from notcologger import info, log_context
@@ -39,118 +103,51 @@ from notcologger import info, log_context
 async def handle_request(request_id):
     with log_context(requestId=request_id, meta={"service": "billing"}):
         info("request.start", "Handling request", "request")
-        await process_payment()
+        await process_payment()  # its module-level log calls use the same rid
 ```
 
-All module-level `debug`, `info`, `warn`, and `error` calls in the scope use its
-request ID and metadata. Use ordinary `with`, including inside async functions.
-The context manager does not return a logger.
+- If no `requestId` is given, a new ID is generated. In a nested context, the
+  ID is inherited from the enclosing context.
+- Metadata is merged one level deep: values from inner contexts override outer
+  ones, and an event's own `meta` overrides both.
+- Context metadata must be JSON-serializable. A snapshot is taken on entry, so
+  later changes to the dictionary have no effect.
+- Asyncio tasks and `asyncio.to_thread()` inherit the active context. Threads
+  started in other ways do not; use `contextvars.copy_context().run` to pass it.
+- `LogSpan` and `ExceptionSpan` objects ignore the context. Pass the request ID
+  to them directly if you need it.
 
-- An outer scope without `requestId` generates one ID for the entire scope.
-- A nested scope inherits its parent's ID unless given a new one. Explicit IDs
-  must be non-empty strings.
-- Metadata merges shallowly: inner context values override parent values, and
-  event-specific `meta` overrides context values. Nested objects are replaced,
-  rather than recursively merged.
-- Context metadata must be a JSON-serializable dictionary. It is validated and
-  snapshotted when entering the scope, including nested lists and dictionaries.
-  Standard JSON conversion applies (for example, tuples become arrays and numeric
-  dictionary keys become strings). Bytes and exceptions are supported in event
-  metadata as described below, but must be converted before binding context metadata.
-- Exiting restores the previous context, including on exceptions and cancellation.
-  Invalid context metadata fails before changing the active context.
+### ExceptionSpan
 
-Outside a context, module-level logging retains its original behavior: every call
-gets a fresh request ID. Explicit `LogSpan` and `ExceptionSpan` objects remain
-independent of ambient context. To correlate an explicit span, pass the request ID
-and metadata to it directly. Entering an `ExceptionSpan` does not bind module-level
-logging calls.
+`ExceptionSpan` logs an error only if an exception leaves the `with` block. The
+exception is not caught: it still propagates.
 
-Asyncio tasks inherit the context active when they are created. Changes in a child
-scope do not affect the parent or sibling tasks. A background task can retain its
-inherited request context after the parent's scope exits; give unrelated background
-work a new context explicitly. `asyncio.to_thread()` propagates context. For
-`run_in_executor()` or thread pools, propagate deliberately with a fresh
-`contextvars.copy_context().run` per submission; do not rely on implicit thread
-inheritance. Context is not automatically propagated across processes or services.
+```python
+from notcologger import ExceptionSpan
 
-## Levels
-
-These are suggested guidelines for log levels:
-
-* Error: The system has run into a fatal exception that requires attention from admins.
-* Warning: Something went wrong, but admins do not need to be urgently alerted.
-* Info: Normal logging.
-* Debug: General developer friendly spam that is wanted in the logs for common "what the hell just happened" type of solving.
-
-## Suggested group
-
-Here are some groups that have been found to be useful:
-
-* request: Incoming requests
-* response: Outgoing responses
-* session: Events related to an active session
-* technical: Events related to some technical state or issues
-
-## ExceptionSpan
-
-When you need to log an error but only when an exception is raised, you can use ExceptionSpan context manager:
-
-```
-    with ExceptionSpan('mylog.problem', 'Doing something fails', 'technical') as log:
-        do_something_that_fails()
-        log.info('mylog.success', 'It worked!', 'technical')
+with ExceptionSpan("orders.payment.failed", "Payment failed", "technical") as log:
+    charge_card()
+    log.info("orders.payment.success", "Payment succeeded", "technical")
 ```
 
-If `do_something_that_fails()` fails and raises an exception, the ExceptionSpan logs an error. If the call succeeds, the optional log.info() is called. Note that ExceptionSpan does not catch the exception.
+The error event includes the exception type and arguments in `meta`.
+`ExceptionSpan` also accepts `requestId`, `level`, `user` and `meta`.
 
+## Configuration
 
+Set `NOTCO_LOGLEVEL` to `debug`, `info`, `warning` or `error` to choose the
+minimum level that is logged. If the variable is missing or has another value,
+the level is `debug`.
 
-## Metadata and logging failures
+## Metadata and errors
 
-`LogSpan.annotate(**values)` adds metadata to subsequent events. Event-specific
-`meta` values override annotations with the same key. Logging does not modify the
-supplied metadata dictionary. Bytes and exceptions directly in `meta` are converted
-to strings; nested values must already be JSON serializable. Empty metadata is omitted.
+- Bytes and exceptions at the top level of an event's `meta` are converted to
+  strings. Everything else must be JSON-serializable.
+- `NaN` and infinite floats raise `ValueError`, because they are not valid JSON.
+- Logging does not modify the dictionaries you pass in.
+- If an event can't be serialized or written, the logging call raises an
+  exception. The exception is when `ExceptionSpan` is already logging an error
+  for an exception leaving its block: then logging errors are suppressed so the
+  original exception propagates unchanged.
 
-`NOTCO_LOGLEVEL` accepts `debug`, `info`, `warning`, or `error`, and defaults to
-`debug` for missing or unrecognized values.
-
-Non-finite floats (`NaN`, positive infinity, and negative infinity) are rejected
-with `ValueError`, including in nested metadata. Context metadata and annotations
-are validated before changing existing state; event serialization fails before
-writing any output. This is a compatibility change from 0.2.1, which emitted
-non-standard JSON tokens for these values. Convert them explicitly before logging
-if they are meaningful to your application.
-
-Ordinary logging calls propagate serialization and output errors. When an exception
-is already leaving an `ExceptionSpan` block, logging errors derived from `Exception`
-are suppressed so the original exception continues to propagate.
-
-## Running tests
-
-```sh
-python3 -m unittest discover -s tests -v
-```
-
-## Development and package validation
-
-Create a virtual environment and install the shared development tools (requires
-pip 25.1 or newer for dependency groups):
-
-```sh
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install --group dev
-python -m flake8
-python scripts/check_package.py
-```
-
-The package check builds the source distribution and a wheel from it, validates
-both with Twine, checks metadata and required files, and runs the tests against
-the wheel in a clean virtual environment outside the checkout. CI runs the same
-commands for every supported Python version.
-
-To retain release artifacts locally, run `python -m build`; files are written to
-`dist/`. The Poetry CLI is not required.
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
