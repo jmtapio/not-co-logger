@@ -4,6 +4,18 @@ Not-co-logger is a simple Python library to help log things to stdout in a
 specific JSON format. It is inspired by the checkout-logger TypeScript 
 library (https://github.com/CheckoutFinland/checkout-logger).
 
+## Python support
+
+Supported Python versions are **3.11, 3.12, 3.13, 3.14, and 3.15**.
+CI runs the test suite on each of these versions. We target Python releases
+receiving upstream bug fixes or security updates; see the
+[Python version status](https://devguide.python.org/versions/).
+New Python releases are added to this list after CI validation.
+
+The next release requires Python 3.11 or newer, dropping support for Python 3.9
+and 3.10. Applications using those versions must upgrade Python before upgrading
+from notcologger 0.2.1.
+
 ## How to use
 
 This guide is short and in need of much verbosity.
@@ -67,3 +79,25 @@ are suppressed so the original exception continues to propagate.
 ```sh
 python3 -m unittest discover -s tests -v
 ```
+
+## Development and package validation
+
+Create a virtual environment and install the shared development tools (requires
+pip 25.1 or newer for dependency groups):
+
+```sh
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install --group dev
+python -m flake8
+python scripts/check_package.py
+```
+
+The package check builds the source distribution and a wheel from it, validates
+both with Twine, checks metadata and required files, and runs the tests against
+the wheel in a clean virtual environment outside the checkout. CI runs the same
+commands for every supported Python version.
+
+To retain release artifacts locally, run `python -m build`; files are written to
+`dist/`. The Poetry CLI is not required.
